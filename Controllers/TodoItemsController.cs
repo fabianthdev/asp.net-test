@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TodoApi.Models;
+using TodoApi.Services;
 
 namespace asp.net_test.Controllers
 {
@@ -13,35 +14,26 @@ namespace asp.net_test.Controllers
     [ApiController]
     public class TodoItemsController : ControllerBase
     {
-        private readonly TodoContext _context;
+        private readonly TodosService _todosService;
 
-        public TodoItemsController(TodoContext context)
+        public TodoItemsController(TodosService service)
         {
-            _context = context;
+            _todosService = service;
         }
 
         // GET: api/todos
         [HttpGet]
         public async Task<ActionResult<IEnumerable<TodoItemDTO>>> GetTodoItems()
         {
-          if (_context.TodoItems == null)
-          {
-              return NotFound();
-          }
-            return await _context.TodoItems
-                .Select(x => ItemToDTO(x))
-                .ToListAsync();
+            // var todos = await _todosService.GetTodosAsync();
+            return await ItemDTOsAsync(_todosService.GetTodosAsync());
         }
 
         // GET: api/todos/5
         [HttpGet("{id}")]
         public async Task<ActionResult<TodoItemDTO>> GetTodoItem(long id)
         {
-          if (_context.TodoItems == null)
-          {
-              return NotFound();
-          }
-            var todoItem = await _context.TodoItems.FindAsync(id);
+            var todoItem = await _todosService.GetTodoAsync(id);
 
             if (todoItem == null)
             {
@@ -62,7 +54,7 @@ namespace asp.net_test.Controllers
             }
 
             // Find corresponding TodoItem
-            var todoItem = await _context.TodoItems.FindAsync(id);
+            var todoItem = await _todosService.GetTodoAsync(id);
             if (todoItem == null)
             {
                 return NotFound();
@@ -72,23 +64,7 @@ namespace asp.net_test.Controllers
             todoItem.Name = todoItemDTO.Name;
             todoItem.IsComplete = todoItemDTO.IsComplete;
 
-            _context.Entry(todoItem).State = EntityState.Modified;
-
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!TodoItemExists(id))
-                {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
-            }
+            await _todosService.UpdateAsync(id, todoItem);
 
             return NoContent();
         }
@@ -98,11 +74,6 @@ namespace asp.net_test.Controllers
         [HttpPost]
         public async Task<ActionResult<TodoItem>> PostTodoItem(TodoItemDTO todoItemDTO)
         {
-            if (_context.TodoItems == null)
-            {
-                return Problem("Entity set 'TodoContext.TodoItems'  is null.");
-            }
-
             // Create a new TodoItem from the values provided in the DTO
             var todoItem = new TodoItem
             {
@@ -110,8 +81,7 @@ namespace asp.net_test.Controllers
                 IsComplete = todoItemDTO.IsComplete,
             };
 
-            _context.TodoItems.Add(todoItem);
-            await _context.SaveChangesAsync();
+            await _todosService.CreateAsync(todoItem);
 
             return CreatedAtAction(nameof(GetTodoItem), new { id = todoItem.Id }, ItemToDTO(todoItem));
         }
@@ -120,25 +90,15 @@ namespace asp.net_test.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteTodoItem(long id)
         {
-            if (_context.TodoItems == null)
-            {
-                return NotFound();
-            }
-            var todoItem = await _context.TodoItems.FindAsync(id);
+            var todoItem = await _todosService.GetTodoAsync(id);
             if (todoItem == null)
             {
                 return NotFound();
             }
 
-            _context.TodoItems.Remove(todoItem);
-            await _context.SaveChangesAsync();
+            await _todosService.RemoveAsync(id);
 
             return NoContent();
-        }
-
-        private bool TodoItemExists(long id)
-        {
-            return (_context.TodoItems?.Any(e => e.Id == id)).GetValueOrDefault();
         }
 
         /// <summary>Convert <c>TodoItem</c> to Data Transfer Object</summary>
@@ -149,5 +109,12 @@ namespace asp.net_test.Controllers
                 Name = todoItem.Name,
                 IsComplete = todoItem.IsComplete,
             };
+
+        private async static Task<TodoItemDTO> ItemToDTOAsync(Task<TodoItem> todoItem) =>
+            ItemToDTO(await todoItem);
+
+        private async static Task<List<TodoItemDTO>> ItemDTOsAsync(Task<List<TodoItem>> todoItems) =>
+            (await todoItems).Select(x => ItemToDTO(x)) as List<TodoItemDTO>;
+            
     }
 }
